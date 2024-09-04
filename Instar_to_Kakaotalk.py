@@ -56,17 +56,28 @@ def get_latest_instagram_post(driver, target_username):
 
     raise Exception("Failed to find the latest post image URL.")
 
-def refresh_token(app_key, tokens):
+def fetch_latest_image_url(target_username):
+    driver = instagram_login(username, password)
+    try:
+        image_url = get_latest_instagram_post(driver, target_username)
+        return image_url
+    finally:
+        driver.quit()
+
+def refresh_token(api_key, tokens):
     url = "https://kauth.kakao.com/oauth/token"
     data = {
         "grant_type": "refresh_token",
-        "client_id": app_key,
+        "client_id": api_key,
         "refresh_token": tokens['refresh_token']
     }
 
     response = requests.post(url, data=data)
+
+    # 갱신 된 토큰 내용 확인
     result = response.json()
 
+    # 갱신 된 내용으로 파일 업데이트
     if 'access_token' in result:
         tokens['access_token'] = result['access_token']
     if 'refresh_token' in result:
@@ -79,32 +90,30 @@ def refresh_token(app_key, tokens):
 
 # 현재 스크립트의 디렉터리 경로를 얻음
 script_dir = os.path.dirname(os.path.abspath(__file__))
-
 # chromedriver 경로를 상대경로로 지정
 chromedriver_path = os.path.join(script_dir, 'chromedriver-win32', 'chromedriver-win32', 'chromedriver.exe')
-
 # credentials.json 경로를 상대경로로 지정
 credentials_path = os.path.join(script_dir, 'credentials.json')
-
 # credentials 불러오기
 credentials = load_credentials(credentials_path)
 
 username = credentials["username"]
 password = credentials["password"]
 target_username = credentials["target_username"]
+api_key = credentials["kakao_api_key"]
 
-driver = instagram_login(username, password)
+#이미지 크롤링해오기
+image_url = fetch_latest_image_url(target_username)
+print("Latest post image URL:", image_url)
 
-try:
-    image_url = get_latest_instagram_post(driver, target_username)
-    print("Latest post image URL:", image_url)
-finally:
-    driver.quit()
-
+#카카오 토큰 불러오기
 with open("kakao_code.json","r") as fp:
     tokens = json.load(fp)
 
-url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
+#토큰 만료를 대비한 토큰 리프래시 실행
+tokens = refresh_token(api_key, tokens)
+
+kakao_api_url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
 headers = {"Authorization" : "Bearer " + tokens["access_token"]}
 
 data = {
@@ -125,7 +134,7 @@ data = {
 }
 
 if image_url:
-    response = requests.post(url, headers=headers, data=data)
+    response = requests.post(kakao_api_url, headers=headers, data=data)
     print(response.status_code)
     if response.json().get('result_code') == 0:
         print('메시지를 성공적으로 보냈습니다.')
