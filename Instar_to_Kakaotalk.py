@@ -8,6 +8,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 import time
 import os
+import argparse
 
 def load_credentials(file_path):
     with open(file_path, 'r') as file:
@@ -88,57 +89,67 @@ def refresh_token(api_key, tokens):
 
     return tokens
 
-# 현재 스크립트의 디렉터리 경로를 얻음
-script_dir = os.path.dirname(os.path.abspath(__file__))
-# chromedriver 경로를 상대경로로 지정
-chromedriver_path = os.path.join(script_dir, 'chromedriver-win32', 'chromedriver-win32', 'chromedriver.exe')
-# credentials.json 경로를 상대경로로 지정
-credentials_path = os.path.join(script_dir, 'credentials.json')
-# credentials 불러오기
-credentials = load_credentials(credentials_path)
 
-username = credentials["username"]
-password = credentials["password"]
-target_username = credentials["target_username"]
-api_key = credentials["kakao_api_key"]
+if __name__ == "__main__":
+    # argparse를 이용해 target_username 파라미터를 받음
+    parser = argparse.ArgumentParser(description="Instagram 크롤러와 Kakao API를 사용한 메시지 전송")
+    parser.add_argument('target_username', type=str, help="Instagram에서 크롤링할 타겟 유저네임")
+    args = parser.parse_args()
 
-#이미지 크롤링해오기
-image_url = fetch_latest_image_url(target_username)
-print("Latest post image URL:", image_url)
+    # 현재 스크립트의 디렉터리 경로를 얻음
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # chromedriver 경로를 상대경로로 지정
+    chromedriver_path = os.path.join(script_dir, 'chromedriver-win32', 'chromedriver-win32', 'chromedriver.exe')
+    # credentials.json 경로를 상대경로로 지정
+    credentials_path = os.path.join(script_dir, 'credentials.json')
+    # credentials 불러오기
+    credentials = load_credentials(credentials_path)
 
-#카카오 토큰 불러오기
-with open("kakao_code.json","r") as fp:
-    tokens = json.load(fp)
+    username = credentials["username"]
+    password = credentials["password"]
+    api_key = credentials["kakao_api_key"]
+    #target_username = credentials["target_username"]
 
-#토큰 만료를 대비한 토큰 리프래시 실행
-tokens = refresh_token(api_key, tokens)
+    # 파라미터로 받은 target_username 사용
+    target_username = args.target_username
 
-kakao_api_url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
-headers = {"Authorization" : "Bearer " + tokens["access_token"]}
+    #이미지 크롤링해오기
+    image_url = fetch_latest_image_url(target_username)
+    print("Latest post image URL:", image_url)
 
-data = {
-    "template_object": json.dumps({
-        "object_type": "feed",
-        "content": {
-            "title": "오늘의 슈마우스 메뉴",
-            "description": f"https://www.instagram.com/{target_username}/",
-            "image_url": image_url,
-            "image_width": 800,
-            "image_height": 800,
-            "link": {
-                "web_url": image_url,
-                "mobile_web_url": image_url
+    #카카오 토큰 불러오기
+    with open("kakao_code.json","r") as fp:
+        tokens = json.load(fp)
+
+    #토큰 만료를 대비한 토큰 리프래시 실행
+    tokens = refresh_token(api_key, tokens)
+
+    kakao_api_url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
+    headers = {"Authorization" : "Bearer " + tokens["access_token"]}
+
+    data = {
+        "template_object": json.dumps({
+            "object_type": "feed",
+            "content": {
+                "title": f"{target_username}의 최신 게시글",
+                "description": f"https://www.instagram.com/{target_username}/",
+                "image_url": image_url,
+                "image_width": 800,
+                "image_height": 800,
+                "link": {
+                    "web_url": image_url,
+                    "mobile_web_url": image_url
+                }
             }
-        }
-    })
-}
+        })
+    }
 
-if image_url:
-    response = requests.post(kakao_api_url, headers=headers, data=data)
-    print(response.status_code)
-    if response.json().get('result_code') == 0:
-        print('메시지를 성공적으로 보냈습니다.')
+    if image_url:
+        response = requests.post(kakao_api_url, headers=headers, data=data)
+        print(response.status_code)
+        if response.json().get('result_code') == 0:
+            print('메시지를 성공적으로 보냈습니다.')
+        else:
+            print('메시지를 성공적으로 보내지 못했습니다. 오류 메시지 : ' + str(response.json()))
     else:
-        print('메시지를 성공적으로 보내지 못했습니다. 오류 메시지 : ' + str(response.json()))
-else:
-    print("이미지 URL을 가져오지 못했습니다.")
+        print("이미지 URL을 가져오지 못했습니다.")
