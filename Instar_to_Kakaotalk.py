@@ -89,11 +89,25 @@ def refresh_token(api_key, tokens):
 
     return tokens
 
+def append_result_to_json(result_data, file_path): #기존 JSON 파일에 결과를 추가하는 함수
+    if os.path.exists(file_path):
+        with open(file_path, 'r') as fp:
+            data = json.load(fp)
+            if not isinstance(data, list):
+                data = [data]
+    else:
+        data = []
+
+    data.append(result_data)
+
+    with open(file_path, 'w') as fp:
+        json.dump(data, fp, ensure_ascii=False, indent=4)
 
 if __name__ == "__main__":
     # argparse를 이용해 target_username 파라미터를 받음
     parser = argparse.ArgumentParser(description="Instagram 크롤러와 Kakao API를 사용한 메시지 전송")
     parser.add_argument('target_username', type=str, help="Instagram에서 크롤링할 타겟 유저네임")
+    parser.add_argument('task_id', type=str, help="각 요청에 고유한 task_id")
     args = parser.parse_args()
 
     # 현재 스크립트의 디렉터리 경로를 얻음
@@ -105,13 +119,14 @@ if __name__ == "__main__":
     # credentials 불러오기
     credentials = load_credentials(credentials_path)
 
+    # 파라미터로 받은 target_username 사용
+    target_username = args.target_username
+    task_id = args.task_id
+
     username = credentials["username"]
     password = credentials["password"]
     api_key = credentials["kakao_api_key"]
     #target_username = credentials["target_username"]
-
-    # 파라미터로 받은 target_username 사용
-    target_username = args.target_username
 
     #이미지 크롤링해오기
     image_url = fetch_latest_image_url(target_username)
@@ -144,12 +159,30 @@ if __name__ == "__main__":
         })
     }
 
+    result_data = {
+        "task_id": task_id,
+        "target_username": target_username,
+        "image_url": image_url,
+        "status": None,
+        "message": None
+    }
+
     if image_url:
         response = requests.post(kakao_api_url, headers=headers, data=data)
         print(response.status_code)
         if response.json().get('result_code') == 0:
             print('메시지를 성공적으로 보냈습니다.')
+            result_data["status"] = "success"
+            result_data["message"] = "message send successful."
         else:
             print('메시지를 성공적으로 보내지 못했습니다. 오류 메시지 : ' + str(response.json()))
+            result_data["status"] = "failure"
+            result_data["message"] = 'message send falied. error message : ' + str(response.json())
     else:
         print("이미지 URL을 가져오지 못했습니다.")
+        result_data["status"] = "failure"
+        result_data["message"] = "cant find image url."
+    
+    # 전송 결과를 json 파일로 저장
+    result_file_path = os.path.join(script_dir, f"kakao_message_result.json")
+    append_result_to_json(result_data, result_file_path)
