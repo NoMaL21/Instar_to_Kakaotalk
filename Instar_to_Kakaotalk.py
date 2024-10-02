@@ -21,6 +21,8 @@ def instagram_login(username, password):
     options.add_argument('--headless')
     options.add_argument('--disable-gpu')
     options.add_argument('--no-sandbox')
+    options.add_argument("--log-level=3")  # 로그 레벨을 'SEVERE'로 설정하여 로그 최소화
+    options.add_experimental_option('excludeSwitches', ['enable-logging'])  # 디버그 정보 출력 억제
     driver = webdriver.Chrome(executable_path=chromedriver_path, options=options)
 
     driver.get(url)
@@ -49,7 +51,7 @@ def get_latest_instagram_post(driver, target_username):
     time.sleep(5)
 
     soup = BeautifulSoup(driver.page_source, 'html.parser')
-    print(soup.prettify())
+    #print(soup.prettify()) # 뷰티풀수프에서 로그 출력 안되게 주석 처리함
 
     images = soup.find_all('img', class_="x5yr21d xu96u03 x10l6tqk x13vifvy x87ps6o xh8yej3")
     if images:
@@ -65,7 +67,7 @@ def fetch_latest_image_url(target_username):
     finally:
         driver.quit()
 
-def refresh_token(api_key, tokens):
+def refresh_kakao_token(api_key, tokens):
     url = "https://kauth.kakao.com/oauth/token"
     data = {
         "grant_type": "refresh_token",
@@ -104,10 +106,16 @@ def append_result_to_json(result_data, file_path): #기존 JSON 파일에 결과
         json.dump(data, fp, ensure_ascii=False, indent=4)
 
 if __name__ == "__main__":
-    # argparse를 이용해 target_username 파라미터를 받음
-    parser = argparse.ArgumentParser(description="Instagram 크롤러와 Kakao API를 사용한 메시지 전송")
-    parser.add_argument('target_username', type=str, help="Instagram에서 크롤링할 타겟 유저네임")
-    parser.add_argument('task_id', type=str, help="각 요청에 고유한 task_id")
+    # argparse를 이용해 각 파라미터를 받음
+    parser = argparse.ArgumentParser(description="인스타그램 크롤러와 카카오 API를 사용한 메시지 전송")
+    parser.add_argument('--target_username', type=str, help="인스타그램에서 크롤링할 타겟 유저네임", required=True)
+    parser.add_argument('--task_id', type=str, help="각 요청의 고유한 task_id", required=True)
+    parser.add_argument('--access_token', type=str, help="카카오 토큰", required=True)
+    parser.add_argument('--token_type', type=str, help="토큰 타입", required=True)
+    parser.add_argument('--refresh_token', type=str, help="리프래시 카카오 토큰", required=True)
+    parser.add_argument('--expires_in', type=str, help="카카오 토큰 만료시간", required=True)
+    parser.add_argument('--refresh_token_expires_in', type=str, help="리프래시한 토큰의 만료 시간", required=True)
+    #parser.add_argument('scope', type=str, help="카카오 권한") # 카카오 권한은 띄어쓰기가 되어있어서 하드코딩함
     args = parser.parse_args()
 
     # 현재 스크립트의 디렉터리 경로를 얻음
@@ -122,6 +130,11 @@ if __name__ == "__main__":
     # 파라미터로 받은 target_username 사용
     target_username = args.target_username
     task_id = args.task_id
+    access_token = args.access_token
+    token_type = args.token_type
+    refresh_token = args.refresh_token
+    expires_in = args.expires_in
+    refresh_token_expires_in = args.refresh_token_expires_in
 
     username = credentials["username"]
     password = credentials["password"]
@@ -133,11 +146,22 @@ if __name__ == "__main__":
     print("Latest post image URL:", image_url)
 
     #카카오 토큰 불러오기
-    with open("kakao_code.json","r") as fp:
-        tokens = json.load(fp)
+    #백엔드 상에서 실행하기 위해 주석 처리
+    #with open("kakao_code.json","r") as fp:
+    #    tokens = json.load(fp)
+
+    #토큰 리프래시를 위해서 파라미터로 받은 카카오 토큰 json화
+    tokens = {
+        "access_token" : f"{access_token}",
+        "token_type" : f"{token_type}",
+        "refresh_token" : f"{refresh_token}",
+        "expires_in" : f"{expires_in}",
+        "scope" : "talk_message profile_nickname friends",
+        "refresh_token_expires_in": f"{refresh_token_expires_in}"
+    }
 
     #토큰 만료를 대비한 토큰 리프래시 실행
-    tokens = refresh_token(api_key, tokens)
+    tokens = refresh_kakao_token(api_key, tokens)
 
     kakao_api_url = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
     headers = {"Authorization" : "Bearer " + tokens["access_token"]}
@@ -164,7 +188,13 @@ if __name__ == "__main__":
         "target_username": target_username,
         "image_url": image_url,
         "status": None,
-        "message": None
+        "message": None,
+        "access_token": tokens["access_token"],
+        "token_type" : tokens["token_type"],
+        "refresh_token" : tokens["refresh_token"],
+        "expires_in" : tokens["expires_in"],
+        "scope" : "talk_message profile_nickname friends",
+        "refresh_token_expires_in": tokens["refresh_token_expires_in"]
     }
 
     if image_url:
@@ -180,9 +210,14 @@ if __name__ == "__main__":
             result_data["message"] = 'message send falied. error message : ' + str(response.json())
     else:
         print("이미지 URL을 가져오지 못했습니다.")
-        result_data["status"] = "failure"
+        result_data["status"] = "failure_image"
         result_data["message"] = "cant find image url."
     
-    # 전송 결과를 json 파일로 저장
-    result_file_path = os.path.join(script_dir, f"kakao_message_result.json")
-    append_result_to_json(result_data, result_file_path)
+    # 결과 데이터 json으로 출력
+    print(result_data)
+
+    # 전송 결과를 json 파일로 저장 # DB에서는 사용 안함
+    #result_file_path = os.path.join(script_dir, f"kakao_message_result.json")
+    #append_result_to_json(result_data, result_file_path)
+
+
