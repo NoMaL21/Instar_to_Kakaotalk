@@ -5,6 +5,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.service import Service
 from bs4 import BeautifulSoup
 import time
 import os
@@ -23,7 +24,8 @@ def instagram_login(username, password):
     options.add_argument('--no-sandbox')
     options.add_argument("--log-level=3")  # 로그 레벨을 'SEVERE'로 설정하여 로그 최소화
     options.add_experimental_option('excludeSwitches', ['enable-logging'])  # 디버그 정보 출력 억제
-    driver = webdriver.Chrome(executable_path=chromedriver_path, options=options)
+    chromedriver_service = Service(executable_path=chromedriver_path)
+    driver = webdriver.Chrome(service=chromedriver_service, options=options)
 
     driver.get(url)
 
